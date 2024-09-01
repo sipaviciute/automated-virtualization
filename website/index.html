@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Taksofonas</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="content-wrap">
+        <header>
+            <div class="container">
+                <h1 class="text-left">Taksofonas</h1>
+                <nav>
+                    <ul>
+                        <li><a href="index.html">Home</a></li>
+                        <li><a href="about.html">About</a></li>
+                    </ul>
+                </nav>
+            </div>
+        </header>
+
+        <div class="full-size-icon">
+            <div class="center-container">
+                <main>
+                    <div class="container">
+                        <h2>So call me maybe...</h2>
+                        <div class="input-group">
+                            <label for="textInput">Type in your phone number:</label>
+                            <input type="text" id="textInput" placeholder="e.g., +123456789" maxlength="20" oninput="validateAndUseInput(this)">
+                            <button id="submitButton" type="button" onclick="validateAndUseInput(document.getElementById('textInput'))">Calling</button>
+                        </div>
+                        <div id="loadingIndicator" style="display: none;">Calling...</div>
+                        <div id="errorContainer" style="color: red;"></div>
+                    </div>
+                </main>
+            </div>
+	</div>
+<script>
+    function validateInput(input) {
+        let value = input.value;
+        if (value.startsWith('+')) {
+            value = '+' + value.slice(1).replace(/[^\d]/g, '');
+        } else {
+            value = value.replace(/[^\d]/g, '');
+        }
+
+        input.value = value;
+        return value;
+    }
+
+    function validateAndUseInput() {
+        validateInput(document.getElementById('textInput'));
+    }
+
+    function makeCall() {
+    const phoneNo = validateInput(document.getElementById('textInput'));
+
+    const xhttp = new XMLHttpRequest();
+    xhttp.onreadystatechange = function () {
+        if (this.readyState == 4) {
+            if (this.status == 200) {
+                console.log("Response from submit_number.php:", this.responseText);
+
+                initiateCall(phoneNo);
+            } else {
+                console.error("Error submitting to the database");
+            }
+        }
+    };
+    xhttp.open("POST", "submit_number.php", true);
+    xhttp.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
+    xhttp.send("phone_number=" + phoneNo);
+}
+
+function initiateCall(phoneNumber) {
+    const callXhttp = new XMLHttpRequest();
+    callXhttp.onreadystatechange = function () {
+        if (this.readyState == 4) {
+            if (this.status == 200) {
+                console.log("Response from make_call.php:", this.responseText);
+            } else {
+                console.error("Error initiating the call");
+            }
+        }
+    };
+    callXhttp.open("POST", "make_call.php", true);
+    callXhttp.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
+    callXhttp.send("phoneNumber=" + phoneNumber);
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    const submitButton = document.getElementById('submitButton');
+    submitButton.addEventListener('click', makeCall);
+    const textInput = document.getElementById('textInput');
+    textInput.addEventListener('input', validateAndUseInput);
+
+}
+);
+</script>
+</body>
+</html>
