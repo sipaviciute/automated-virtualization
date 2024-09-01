@@ -1,0 +1,54 @@
+---
+- name: Client VM creation
+  hosts: clientserver
+  become: true
+  become_user: root
+
+  vars_files:
+    - ./vault.yml
+
+  tasks:
+    - name: Create a new user with hashed password
+      ansible.builtin.user:
+        name: Petras
+        password: "{{ client_password | ansible.builtin.password_hash('sha512', '5c7d87c980a') }}"
+        state: present
+
+    - name: Update and Upgrade APT Packages
+      ansible.builtin.apt:
+        update_cache: 'true'
+        upgrade: 'yes'
+
+    - name: Install GNUPG
+      ansible.builtin.apt:
+        name: gnupg
+        state: present
+
+    - name: Add Google Chrome key
+      ansible.builtin.apt_key:
+        url: "https://dl.google.com/linux/linux_signing_key.pub"
+        state: present
+
+    - name: Add Google Chrome repository
+      ansible.builtin.apt_repository:
+        repo: "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main"
+        state: present
+        filename: google-chrome
+
+    - name: Install google-chrome-stable
+      ansible.builtin.apt:
+        name: "google-chrome-stable"
+        state: present
+        update_cache: true
+
+    - name: Install GNOME
+      ansible.builtin.apt:
+        name:
+          - gnome-shell
+          - gnome-terminal
+          - gnome-tweaks
+        state: present
+
+    - name: Reboot the VM
+      ansible.builtin.reboot:
+        reboot_timeout: 300

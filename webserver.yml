@@ -1,0 +1,120 @@
+---
+- name: Webserver VM creation
+  hosts: webserver
+  become: true
+  become_user: root
+
+  tasks:
+    - name: Update and Upgrade APT Packages
+      ansible.builtin.apt:
+        update_cache: 'true'
+        upgrade: 'yes'
+
+    - name: Install Apache
+      ansible.builtin.apt:
+        name: apache2
+        state: present
+      notify: Reload Apache
+
+    - name: Install required packages for webserver
+      ansible.builtin.apt:
+        name:
+          - php
+          - libapache2-mod-php
+          - php-mysql
+          - php-curl
+          - git
+          - composer
+        state: present
+
+    - name: Download MySQL APT Config
+      ansible.builtin.get_url:
+        url: https://dev.mysql.com/get/mysql-apt-config_0.8.22-1_all.deb
+        dest: /tmp/mysql-apt-config_0.8.22-1_all.deb
+        mode: '0644'
+        headers:
+          user-agent: curl/7.74.0
+
+    - name: Install MySQL APT Config
+      ansible.builtin.apt:
+        deb: /tmp/mysql-apt-config_0.8.22-1_all.deb
+
+    - name: Update APT cache after adding MySQL repository
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: Install MySQL Client
+      ansible.builtin.apt:
+        name: mysql-client
+        state: present
+
+    - name: Delete static files from /var/www/html
+      ansible.builtin.file:
+        path: /var/www/html/index.html
+        state: absent
+
+    - name: Clone repo to /var/www/html
+      ansible.builtin.git:
+        repo: 'https://github.com/Modec25/call_center_github.git'
+        dest: "/var/www/html"
+      notify: Reload Apache
+
+    - name: Unarchive a file that is already on the remote machine
+      ansible.builtin.unarchive:
+        src: /var/www/html/call-centre.zip
+        dest: /var/www/html/
+        remote_src: true 
+
+    - name: Include variables
+      ansible.builtin.include_vars: ./vault.yml
+
+    - name: Add variables to submit_number.php
+      ansible.builtin.blockinfile:
+        path: /var/www/html/call-centre/submit_number.php
+        block: |
+          <?php
+          $servername = "{{ db_ip }}";
+          $username = "adsi8893";
+          $password = "{{ web_password }}";
+          $dbname = "callcentre";
+
+        marker: "# {mark} ANSIBLE MANAGED BLOCK"
+        insertbefore: BOF 
+
+    - name: Add Virtual Host to callmemaybe.conf
+      ansible.builtin.copy:
+        content: |
+          <VirtualHost *:80>
+              ServerName callmenow.duckdns.org
+              ServerAlias www.callmenow.duckdns.org
+              DocumentRoot /var/www/html/call-centre/
+          </VirtualHost>
+        dest: /etc/apache2/sites-available/callmemaybe.conf
+        mode: "0755"
+      notify: Reload Apache
+
+    - name: Set ownership for callmemaybe.conf 
+      ansible.builtin.file:
+        path: /etc/apache2/sites-available/callmemaybe.conf
+        owner: "www-data"
+        group: "www-data"
+        mode: "0755"
+
+    - name: Enable Apache Virtual Host
+      ansible.builtin.file:
+        src: /etc/apache2/sites-available/callmemaybe.conf
+        dest: /etc/apache2/sites-enabled/callmemaybe.conf
+        state: link
+      notify: Reload Apache
+
+    - name: Ensure Apache is running and enabled
+      ansible.builtin.service:
+        name: apache2
+        state: started
+        enabled: true
+
+  handlers:
+    - name: Reload Apache
+      ansible.builtin.service:
+        name: apache2
+        state: reloaded

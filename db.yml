@@ -1,0 +1,130 @@
+---
+- name: DB VM creation
+  hosts: dbserver
+  become: true
+  become_user: root
+
+  vars_files:
+    - ./vault.yml
+
+  vars:
+    mysql_root_password: "{{ sudo_pass }}"
+    mysql_db: "callcentre"
+    mysql_user: "adsi8893"
+    mysql_password: "{{ database_password }}"
+    webserver_vm_ip: "{{ web_ip }}"
+
+  tasks:
+    - name: Remove "Externally Managed"
+      ansible.builtin.file:
+        path: /usr/lib/python3.11/EXTERNALLY-MANAGED
+        state: absent
+
+    - name: Download MySQL APT Config
+      ansible.builtin.get_url:
+        url: https://dev.mysql.com/get/mysql-apt-config_0.8.22-1_all.deb
+        dest: /tmp/mysql-apt-config_0.8.22-1_all.deb
+        mode: '0644'
+        headers:
+          user-agent: curl/7.74.0
+
+    - name: Install MySQL APT Config
+      ansible.builtin.apt:
+        deb: /tmp/mysql-apt-config_0.8.22-1_all.deb
+
+    - name: Ensure pip is installed
+      ansible.builtin.apt:
+        name: python3-pip
+        state: present
+
+    - name: Install PyMySQL
+      ansible.builtin.pip:
+        name: PyMySQL
+        executable: /usr/bin/pip3
+
+    - name: Update and Upgrade APT Packages
+      ansible.builtin.apt:
+        update_cache: 'true'
+        upgrade: 'yes'
+
+    - name: Install MySQL Server
+      ansible.builtin.apt:
+        name: mysql-server
+        state: present
+
+    - name: Modify mysqld.cnf
+      ansible.builtin.lineinfile:
+        path: /etc/mysql/mysql.conf.d/mysqld.cnf
+        regexp: '^bind-address'
+        line: 'bind-address = 0.0.0.0'
+        create: true
+        mode: "0644"
+      notify: Restart MySQL
+
+    - name: Set MySQL root password
+      community.mysql.mysql_user:
+        name: ugva9133
+        password: "{{ mysql_root_password }}"
+        check_implicit_admin: true
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+
+    - name: Create MySQL User
+      community.mysql.mysql_user:
+        name: "{{ mysql_user }}"
+        password: "{{ mysql_password }}"
+        priv: "{{ mysql_db }}.*:ALL"
+        host: "{{ webserver_vm_ip }}"
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+
+    - name: Create MySQL Database
+      community.mysql.mysql_db:
+        name: "{{ mysql_db }}"
+        state: present
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+
+    - name: Create calls table in call-centre database
+      community.mysql.mysql_query:
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+        login_db: "{{ mysql_db }}"
+        query: |
+          CREATE TABLE IF NOT EXISTS calls (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            phone_number VARCHAR(20),
+            time_called TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
+
+    - name: Install UFW
+      ansible.builtin.apt:
+        name: ufw
+        state: present
+
+    - name: Enable UFW
+      community.general.ufw:
+        state: enabled
+
+    - name: Allow SSH through UFW
+      community.general.ufw:
+        rule: allow
+        name: OpenSSH
+
+    - name: Allow MySQL from Web Server VM
+      community.general.ufw:
+        rule: allow
+        proto: tcp
+        from: "{{ webserver_vm_ip }}"
+        to: any
+        port: '3306'
+
+  handlers:
+    - name: Restart MySQL
+      ansible.builtin.service:
+        name: mysql
+        state: restarted
